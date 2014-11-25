@@ -36,10 +36,10 @@ import org.apache.mahout.math.*;
 public class lucene_cats_combine {
 	
 	// for performance, load all of the category data into memory (category data shouldn't be too big)
-	public static Map<String, String> readCategories(Configuration conf, Path categoriesPath) {
-		Map<String, String> categories = new HashMap<String, String>();
-		for (Pair<Text, Text> pair : new SequenceFileIterable<Text, Text>(categoriesPath, true, conf)) {
-			categories.put(pair.getFirst().toString(), pair.getSecond().toString()); //
+	public static Map<String, Vector> readCategories(Configuration conf, Path categoriesPath) {
+		Map<String, Vector> categories = new HashMap<String, Vector>();
+		for (Pair<Text, VectorWritable> pair : new SequenceFileIterable<Text, VectorWritable>(categoriesPath, true, conf)) {
+			categories.put(pair.getFirst().toString(), pair.getSecond().get()); //
 		}
 		return categories;
 	}
@@ -60,7 +60,7 @@ public class lucene_cats_combine {
 				Text.class, VectorWritable.class);
 		
 		// Load the id : categories map
-		Map<String, String> categories = readCategories(hconf, new Path(catFileName));
+		Map<String, Vector> categories = readCategories(hconf, new Path(catFileName));
 		
 		// Read Sequence File;
 		SequenceFile.Reader docreader = new SequenceFile.Reader(fs, new Path(luceneFileName), hconf);
@@ -71,15 +71,17 @@ public class lucene_cats_combine {
 		VectorWritable docValue = new VectorWritable();
 		Text newKey = new Text();
 		while (docreader.next(key, docValue)) {
-			NamedVector entry= (NamedVector) docValue.get();
+			NamedVector entry = (NamedVector) docValue.get();
 			String docId = entry.getName().toString();
-		    String[] category = categories.get(docId).split(","); 
-		    for (int i=0; i < category.length; i++) {
-		      if (category[i].equals("")){
-		    	  category[i] = "UncategorizedArticle";
-		      }
-		      newKey.set("/" + category[i] + "/" + docId);
-		      writer.append(newKey, docValue);
+			if(!categories.containsKey(docId)){System.out.println("Skipping key: "+docId);continue;}
+		    Vector category = categories.get(docId); 
+		    for (int i=0; i < category.size(); i++) {
+		      //if (Double.toString(category.get(i)) == ""){
+		    	//  category[i] = "UncategorizedArticle";
+		      //}
+		      newKey.set("/" + Integer.toString(i) + "/" + docId);
+		      VectorWritable newValue = new VectorWritable(docValue.get().times(category.get(i)));
+		      writer.append(newKey, newValue);
 		      //System.out.println(newKey);
 		    }
 		}
